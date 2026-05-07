@@ -1,0 +1,20 @@
+---
+- name: Deploy Nexus Repository Manager
+  hosts: nexus_servers
+  tasks:
+  - name: Install Java 17
+    apt:
+      name: openjdk-17-jre-headless
+      state: present
+      update_cache: yes
+  - name: Download Nexus Repository Manager
+    get_url:
+      url: https://download.sonatype.com/nexus/3/nexus-3.92.0-03-linux-x86_64.tar.gz
+      dest: /tmp/nexus.tar.gz
+  - name: Extract Nexus Repository Manager
+    unarchive:
+      src: /tmp/nexus.tar.gz
+      dest: /opt/
+      remote_src: yes # Use remote_src to indicate that the file is already on the remote server
+  - name: Start Nexus Repository Manager
+    shell: /opt/nexus-*/bin/nexus start
