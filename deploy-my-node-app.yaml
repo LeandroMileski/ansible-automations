@@ -1,6 +1,6 @@
 ---
 - name: Install Node.js and npm
-  hosts: my-node-app-servers
+  hosts: my_node_app_servers
   become: yes
   tasks:
     - name: Update apt repo and cache
@@ -12,7 +12,7 @@
           - npm
 
 - name: Create user nodeapp
-  hosts: my-node-app-servers
+  hosts: my_node_app_servers
   become: yes
   tasks:
     - name: Create user nodeapp
@@ -22,7 +22,7 @@
         state: present
 
 - name: Deploy Node.js application
-  hosts: my-node-app-servers
+  hosts: my_node_app_servers
   become: yes
   tasks:
     - name: Create app directory with ownership for nodeapp
