@@ -1,0 +1,87 @@
+---
+- name: Deploy Docker to EC2
+  hosts: aws_ec2
+  become: yes
+  vars:
+    ansible_user: ec2-user # Amazon Linux default user
+  tasks:
+    # ── Debian / Ubuntu ────────────────────────────────────────────
+    - name: Install Docker dependencies (Debian)
+      apt:
+        name:
+          - ca-certificates
+          - gnupg
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Add Docker GPG key (Debian)
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Add Docker repository (Debian)
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install Docker (Debian)
+      apt:
+        name: docker-ce
+        state: present
+      when: ansible_os_family == "Debian"
+
+      # ── Amazon Linux / RHEL / CentOS ───────────────────────────────
+    - name: Install yum-utils (RedHat)
+      yum:
+        name: yum-utils
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Install Docker on Amazon Linux 2023
+      dnf:
+        name: docker
+        state: present
+      when:
+        - ansible_os_family == "RedHat"
+        - ansible_distribution == "Amazon"
+
+    - name: Add Docker repository (RedHat non-Amazon)
+      command: yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+      args:
+        creates: /etc/yum.repos.d/docker-ce.repo
+      when:
+        - ansible_os_family == "RedHat"
+        - ansible_distribution != "Amazon"
+
+    - name: Install Docker (RedHat non-Amazon)
+      yum:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+      when:
+        - ansible_os_family == "RedHat"
+        - ansible_distribution != "Amazon"
+
+    # ── Common ─────────────────────────────────────────────────────
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    - name: Install Docker Compose
+      get_url:
+        url: https://github.com/docker/compose/releases/latest/download/docker-compose-{{ ansible_system }}-{{ ansible_machine }}
+        dest: /usr/local/bin/docker-compose
+        mode: "0755"

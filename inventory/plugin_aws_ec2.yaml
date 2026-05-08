@@ -1,0 +1,15 @@
+plugin: amazon.aws.aws_ec2
+
+regions:
+  - eu-north-1
+
+filters:
+  instance-state-name: running
+  #tag:BACKUP: "Yes"
+
+keyed_groups:
+  - key: tags.BACKUP
+    prefix: backup
+
+compose:
+  ansible_host: public_ip_address # this is the actual field name
