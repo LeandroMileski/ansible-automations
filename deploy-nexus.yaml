@@ -1,20 +1,117 @@
 ---
 - name: Deploy Nexus Repository Manager
   hosts: nexus_servers
+  become: yes
+  vars:
+    ansible_remote_tmp: /tmp/.ansible/tmp
+
   tasks:
-  - name: Install Java 17
-    apt:
-      name: openjdk-17-jre-headless
-      state: present
-      update_cache: yes
-  - name: Download Nexus Repository Manager
-    get_url:
-      url: https://download.sonatype.com/nexus/3/nexus-3.92.0-03-linux-x86_64.tar.gz
-      dest: /tmp/nexus.tar.gz
-  - name: Extract Nexus Repository Manager
-    unarchive:
-      src: /tmp/nexus.tar.gz
-      dest: /opt/
-      remote_src: yes # Use remote_src to indicate that the file is already on the remote server
-  - name: Start Nexus Repository Manager
-    shell: /opt/nexus-*/bin/nexus start
+    - name: Install Java 17
+      apt:
+        name: openjdk-17-jre-headless
+        state: present
+        update_cache: yes
+
+    - name: Download Nexus Repository Manager
+      get_url:
+        url: https://download.sonatype.com/nexus/3/nexus-3.92.0-03-linux-x86_64.tar.gz
+        dest: /tmp/nexus.tar.gz
+
+    - name: Extract Nexus Repository Manager
+      unarchive:
+        src: /tmp/nexus.tar.gz
+        dest: /opt/
+        remote_src: yes
+
+    - name: Ensure nexus group exists
+      group:
+        name: nexus
+        state: present
+
+    - name: Ensure nexus user exists
+      user:
+        name: nexus
+        group: nexus
+        state: present
+
+    - name: Find Nexus installation directory
+      find:
+        paths: /opt
+        patterns: "nexus-*"
+        file_type: directory
+        recurse: no
+      register: nexus_dir
+
+    - name: Fail early if Nexus directory not found
+      fail:
+        msg: "Could not find a nexus-* directory under /opt"
+      when: nexus_dir.matched == 0
+
+    - name: Set nexus_home fact
+      set_fact:
+        nexus_home: "{{ nexus_dir.files[0].path }}"
+
+    - name: Create stable symlink for Nexus home
+      file:
+        src: "{{ nexus_home }}"
+        dest: /opt/nexus
+        state: link
+
+    - name: Change ownership of Nexus files
+      file:
+        path: "{{ nexus_home }}"
+        owner: nexus
+        group: nexus
+        recurse: yes
+
+    - name: Change ownership of sonatype-work
+      file:
+        path: /opt/sonatype-work
+        owner: nexus
+        group: nexus
+        recurse: yes
+
+    - name: Ensure run_as_user is set in nexus.rc # create: yes handles missing file
+      lineinfile:
+        path: "{{ nexus_home }}/bin/nexus.rc"
+        regexp: "^#?run_as_user="
+        line: 'run_as_user="nexus"'
+        create: yes
+        owner: nexus
+        group: nexus
+        mode: "0644"
+
+    - name: Deploy Nexus systemd service # must come before systemd task
+      copy:
+        src: files/nexus.service # static file using /opt/nexus symlink
+        dest: /etc/systemd/system/nexus.service
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Enable and start Nexus via systemd
+      systemd:
+        name: nexus
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    - name: Allow Nexus port through firewall
+      ufw:
+        rule: allow
+        port: "8081"
+        proto: tcp
+
+    - name: Wait for Nexus to become available
+      uri:
+        url: http://localhost:8081/service/rest/v1/status
+        method: GET
+        status_code: 200
+      register: nexus_status
+      retries: 10 # try up to 10 times
+      delay: 15 # wait 15s between retries (JVM is slow to start)
+      until: nexus_status.status == 200
+
+    - name: Confirm Nexus is up
+      debug:
+        msg: "Nexus is running and healthy at http://{{ ansible_host }}:8081"
